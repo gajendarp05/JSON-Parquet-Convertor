@@ -1,7 +1,6 @@
 package convertor
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"log"
@@ -92,11 +91,10 @@ func (c *Convertor) poller() {
 
 		if err != nil {
 			log.Printf("got an error while receiving messages: %v", err)
-			// Sleeping for some x time before starting polling again
+			// Sleeping for some x time before start polling again
 			time.Sleep(10. * time.Second)
 			continue
 		}
-		log.Println(len(output.Messages))
 		for _, m := range output.Messages {
 			c.workQueue <- &m
 		}
@@ -112,7 +110,6 @@ func (c *Convertor) worker() {
 		if err != nil {
 			log.Print("error while marshaling messages: ", err)
 		}
-		log.Println("sqsobj", sqsobj.Records)
 		// key is path of JSON file (prefix + filename)
 		key, err := url.QueryUnescape(sqsobj.Records[0].S3.Object.Key)
 		if err != nil {
@@ -133,24 +130,23 @@ func (c *Convertor) worker() {
 		}
 
 		pw, fw := c.parquetFileWriter(key)
-		for _, line := range bytes.Split(w.Bytes(), []byte{'\n'}) {
-			if len(line) > 0 {
-				var item personJson
-				if err := json.Unmarshal(line, &item); err != nil {
-					log.Print("failed to unmarshal ", err)
-				}
-				parquetObj := toParquet(item)
-				if err := pw.Write(parquetObj); err != nil {
-					log.Print("error in writing into parquet file")
-				}
-			}
+
+		var item personJson
+		if err := json.Unmarshal(w.Bytes(), &item); err != nil {
+			log.Print("failed to unmarshal ", err)
 		}
+		parquetObj := toParquet(item)
+		if err := pw.Write(parquetObj); err != nil {
+			log.Print("error in writing into parquet file")
+		}
+
 		if err = pw.WriteStop(); err != nil {
 			log.Print("writeStop error", err)
 			return
 		}
 
 		fw.Close()
+		log.Println("JSON to Parquet conversion is successful: ", key)
 
 		// delete the message from queue after successful JSON -> Parquet conversion
 		_, err = c.SQS.DeleteMessage(context.TODO(), &sqs.DeleteMessageInput{
@@ -169,17 +165,14 @@ func (c *Convertor) parquetFileWriter(key string) (*writer.ParquetWriter, source
 	ctx := context.Background()
 	fw, err := parquet_s3.NewS3FileWriter(ctx, c.S3BucketName, key+parquetExt, nil)
 	if err != nil {
-		log.Print("error in creating local file writer")
+		log.Fatalln("error in creating local file writer: ", err)
 	}
 	pw, err := writer.NewParquetWriter(fw, new(personParquet), 1)
 	if err != nil {
-		log.Print("error in creating parquet file writer")
+		log.Fatalln("error in creating parquet file writer: ", err)
 	}
-	if pw == nil || fw == nil {
-		return pw, fw
-	} else {
-		pw.RowGroupSize = 128 * 128 * 1024
-		pw.CompressionType = parquet.CompressionCodec_SNAPPY
-		return pw, fw
-	}
+
+	pw.RowGroupSize = 128 * 128 * 1024
+	pw.CompressionType = parquet.CompressionCodec_SNAPPY
+	return pw, fw
 }

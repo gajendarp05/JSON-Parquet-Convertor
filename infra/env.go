@@ -5,6 +5,7 @@ import (
 	"os"
 )
 
+// CheckEnv Read environment variable
 func CheckEnv(key string) string {
 	val := os.Getenv(key)
 	if val == "" {

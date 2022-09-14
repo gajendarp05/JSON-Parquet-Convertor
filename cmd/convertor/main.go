@@ -1,3 +1,8 @@
+/*
+The JSON to Parquet convertor service reads JSON file from Amazon S3 bucket
+Convert it into Parquet file format
+Write the Parquet file back to to Amazon S3.
+*/
 package main
 
 import (
@@ -57,6 +62,7 @@ func main() {
 	}
 	c.SQSUrl = *urlResult.QueueUrl
 
+	// PartSize and Concurrency are important parameters to tune whne downloading large size file
 	s3Client := s3.NewFromConfig(cfg)
 	c.Downloader = manager.NewDownloader(s3Client, func(d *manager.Downloader) {
 		d.PartSize = 5 * 1024 * 1024 // 5MB per part - Default

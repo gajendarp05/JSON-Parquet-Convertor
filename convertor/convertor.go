@@ -31,7 +31,7 @@ type Convertor struct {
 	Downloader   *manager.Downloader
 }
 
-// SQS body structure
+// SQS message body structure
 type SqsBody struct {
 	Records []struct {
 		S3 struct {
@@ -57,9 +57,8 @@ var pollerwg = &sync.WaitGroup{}
 var workerwg = &sync.WaitGroup{}
 
 func (c *Convertor) Start() {
-	// Workers for processing the SQS messages
 	c.workQueue = make(chan *types.Message, c.Worker)
-	// Worker for processing SQS messages
+	// Workers for processing SQS messages
 	for w := 1; w < c.Worker; w++ {
 		workerwg.Add(1)
 		go c.worker()
@@ -75,10 +74,12 @@ func (c *Convertor) Start() {
 	pollerwg.Wait()
 }
 
+// poller polls continuously to check and retrieves new messages from SQS queue
+// and send them on worker channel for processing
 func (c *Convertor) poller() {
 	defer pollerwg.Done()
 	for {
-		log.Println("Polling for SQS messages...")
+		log.Println("Polling for messages from SQS queue...")
 		output, err := c.SQS.ReceiveMessage(context.TODO(), &sqs.ReceiveMessageInput{
 			QueueUrl: &c.SQSUrl,
 			MessageAttributeNames: []string{
@@ -95,6 +96,7 @@ func (c *Convertor) poller() {
 			time.Sleep(10. * time.Second)
 			continue
 		}
+		// writing SQS message to the worker channel for processing
 		for _, m := range output.Messages {
 			c.workQueue <- &m
 		}
@@ -108,9 +110,10 @@ func (c *Convertor) worker() {
 		var sqsobj SqsBody
 		err := json.Unmarshal([]byte(*m.Body), &sqsobj)
 		if err != nil {
-			log.Print("error while marshaling messages: ", err)
+			log.Println("error while marshaling messages: ", err)
+			continue
 		}
-		// key is path of JSON file (prefix + filename)
+		// key is path of JSON file for download (prefix + filename)
 		key, err := url.QueryUnescape(sqsobj.Records[0].S3.Object.Key)
 		if err != nil {
 			log.Print("unescaping of key "+key+" failed with err: ", err)
@@ -125,7 +128,7 @@ func (c *Convertor) worker() {
 			Key:    aws.String(key),
 		})
 		if err != nil {
-			log.Print("error during downloading from s3: ", err)
+			log.Println("error during downloading from s3: ", err)
 			continue
 		}
 
@@ -133,20 +136,22 @@ func (c *Convertor) worker() {
 
 		var item personJson
 		if err := json.Unmarshal(w.Bytes(), &item); err != nil {
-			log.Print("failed to unmarshal ", err)
+			log.Println("failed to unmarshal ", err)
+			continue
 		}
 		parquetObj := toParquet(item)
 		if err := pw.Write(parquetObj); err != nil {
-			log.Print("error in writing into parquet file")
+			log.Println("error in writing into parquet file")
+			continue
 		}
 
 		if err = pw.WriteStop(); err != nil {
 			log.Print("writeStop error", err)
-			return
+			continue
 		}
 
 		fw.Close()
-		log.Println("JSON to Parquet conversion is successful: ", key)
+		log.Printf("JSON file %s to Parquet conversion is successful: ", key)
 
 		// delete the message from queue after successful JSON -> Parquet conversion
 		_, err = c.SQS.DeleteMessage(context.TODO(), &sqs.DeleteMessageInput{
@@ -171,8 +176,9 @@ func (c *Convertor) parquetFileWriter(key string) (*writer.ParquetWriter, source
 	if err != nil {
 		log.Fatalln("error in creating parquet file writer: ", err)
 	}
-
+	// http://cloudsqale.com/2020/05/29/how-parquet-files-are-written-row-groups-pages-required-memory-and-flush-operations/
 	pw.RowGroupSize = 128 * 128 * 1024
+	// https://github.com/xitongsys/parquet-go#compression-type
 	pw.CompressionType = parquet.CompressionCodec_SNAPPY
 	return pw, fw
 }

@@ -6,7 +6,7 @@ import "strconv"
 func Str_Int(str string) (int, error) {
 	num, err := strconv.Atoi(str)
 	if err != nil {
-		return 0, err
+		panic(err)
 	}
 	return num, nil
 }

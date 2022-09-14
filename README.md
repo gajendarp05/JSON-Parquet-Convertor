@@ -7,4 +7,4 @@ Following AWS services are used:
 1. S3 - for storing json and parquet files
 2. SQS queue - notifying whenever new json files is uploaded to s3 bucket
 
-For more details, checkout this blog
+For more details, checkout this blog: https://gajendarp05.medium.com/json-to-apache-parquet-convertor-service-in-golang-7eedb91ca8f8

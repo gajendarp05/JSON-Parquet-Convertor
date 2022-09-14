@@ -6,3 +6,5 @@ To read more about v2 - https://aws.github.io/aws-sdk-go-v2/docs/getting-started
 Following AWS services are used:
 1. S3 - for storing json and parquet files
 2. SQS queue - notifying whenever new json files is uploaded to s3 bucket
+
+For more details, checkout this blog
